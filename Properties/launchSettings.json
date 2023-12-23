@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ShimGen": {
+      "commandName": "Project",
+      "commandLineArgs": "\"D:\\Games\\i33\\workspace\\libScePad.dll\""
+    }
+  }
+}
