@@ -74,6 +74,7 @@ Parallel.For(0, peFile.ExportedFunctions.Length, i =>
 {
     var export = peFile.ExportedFunctions[i];
 
+    //not ideal, but best method i could find for demangling MSVC names
     var undnamePath = dir[0] + "\\bin\\Hostx64\\x64\\undname.exe";
     var undnameProcess = new Process
     {
@@ -93,40 +94,55 @@ Parallel.For(0, peFile.ExportedFunctions.Length, i =>
     var nameRegex = new Regex(@"is\s*:-\s*""(.*)""");
     var name = nameRegex.Match(undname).Groups[1].Value;
 
+    if (name == export.Name)
+        throw new Exception("Name is not mangled, cannot determine type info.");
+
     var callingConventionRegex = new Regex(@"cdecl|stdcall|thiscall|fastcall");
     var callingConvention = "__" + callingConventionRegex.Match(name).Value;
 
-    var returnTypeRegex = new Regex(@"^(?:(virtual|static|signed|unsigned)\s)?[^ ]+\s*\*?");
+    var returnTypeRegex = new Regex(@"^(?:(virtual|static|signed|unsigned)\s)?[^ ]+(\sconst)?\s*\*?\s*");
     var nameNoQual = name.Replace("public: ", "").Replace("protected: ", "").Replace("private: ", "");
-    var returnType = returnTypeRegex.Match(nameNoQual).Value.Replace("virtual", "").Trim();
-    returnType = returnType.Replace("static ", "");
+    var returnType = returnTypeRegex.Match(nameNoQual).Value.Replace("virtual", "").Replace("static", "").Trim();
 
     if (returnType == callingConvention)
         returnType = "void";
     else if (returnType == "class" || returnType == "struct")
         returnType = "void *";
-    else if(returnType == "enum")
+    else if (returnType == "enum")
         returnType = "int";
 
     var argsRegex = new Regex(@"(?<=\().*(?=\))");
-    var argsMatch = argsRegex.Match(name).Value;
-    var argsCount = argsMatch.Count(c => c == ',');
+    var funcArgs = argsRegex.Match(name).Value.Split(',').Where(v => v != "");
+    var argTypes = funcArgs.Select(arg => returnTypeRegex.Match(arg).Value.Trim()).ToArray();
 
-    if (argsCount != 0 || argsRegex.Match(name).Value != "")
-        argsCount++;
+    for(var j = 0; j < argTypes.Length; j++)
+    {
+        if (argTypes[j] == "enum")
+            argTypes[j] = "int";
+        else if (argTypes[j] == "class" || argTypes[j] == "struct")
+            argTypes[j] = "void*";
+        else if (argTypes[j] == "void")
+            if (argTypes.Length != 1)
+                argTypes[j] = "void*";
+    }
+
+    //if (argsCount != 0 || argsRegex.Match(name).Value != "")
+    //    argsCount++;
 
     var argSB = new StringBuilder();
     var argSB2 = new StringBuilder();
-    for (var j = 0; j < argsCount; j++)
+    for (var j = 0; j < funcArgs.Count(); j++)
     {
         var argName = $"_{j}";
-        argSB2.Append(argName);
-        argSB.Append("int* __ptr64 " + argName);
-        if (j < argsCount - 1)
+        var type = argTypes.ElementAt(j);
+        if (type != "void")
         {
-            argSB.Append(", ");
-            argSB2.Append(", ");
+            argSB2.Append(argName);
         }
+        argSB.Append(type == "void" ? type : $"{type} {argName}");
+        if (j >= funcArgs.Count() - 1) continue;
+        argSB.Append(", ");
+        argSB2.Append(", ");
     }
 
     var typedefsChunk = new List<string>();
@@ -249,7 +265,7 @@ process.Start();
 while (!process.StandardOutput.EndOfStream)
 {
     Console.WriteLine(process.StandardOutput.ReadLine());
-}   
+}
 process.WaitForExit();
 
 //open explorer to output folder

@@ -2,7 +2,7 @@
   "profiles": {
     "ShimGen": {
       "commandName": "Project",
-      "commandLineArgs": "\"D:\\Games\\i33\\workspace\\libScePad.dll\""
+      "commandLineArgs": "\"D:\\Games\\i34\\workspace\\v8.dll\""
     }
   }
 }
